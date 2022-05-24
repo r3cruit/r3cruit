@@ -1,5 +1,5 @@
 import telebot;
-bot = telebot.TeleBot('%ваш токен%');
+bot = telebot.TeleBot('5333895852:AAH2Ht-Mw1ituSvoKfGPlD4xWkwcF2RrJ-E');
 
 @bot.message_handler(content_types=['text'])
 def get_text_messages(message):
