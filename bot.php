@@ -1,40 +1,249 @@
 <?php
-    include('vendor/autoload.php'); //Подключаем библиотеку
-    use Telegram\Bot\Api; 
 
-    $telegram = new Api('5333895852:AAH2Ht-Mw1ituSvoKfGPlD4xWkwcF2RrJ-E'); //Устанавливаем токен, полученный у BotFather
-    $result = $telegram -> getWebhookUpdates(); //Передаем в переменную $result полную информацию о сообщении пользователя
-    
-    $text = $result["message"]["text"]; //Текст сообщения
-    $chat_id = $result["message"]["chat"]["id"]; //Уникальный идентификатор пользователя
-    $name = $result["message"]["from"]["username"]; //Юзернейм пользователя
-    $keyboard = [["Последние статьи"],["Картинка"],["Гифка"]]; //Клавиатура
+ 
 
-    if($text){
-         if ($text == "/start") {
-            $reply = "Добро пожаловать в бота!";
-            $reply_markup = $telegram->replyKeyboardMarkup([ 'keyboard' => $keyboard, 'resize_keyboard' => true, 'one_time_keyboard' => false ]);
-            $telegram->sendMessage([ 'chat_id' => $chat_id, 'text' => $reply, 'reply_markup' => $reply_markup ]);
-        }elseif ($text == "/help") {
-            $reply = "Информация с помощью.";
-            $telegram->sendMessage([ 'chat_id' => $chat_id, 'text' => $reply ]);
-        }elseif ($text == "Картинка") {
-            $url = "https://68.media.tumblr.com/6d830b4f2c455f9cb6cd4ebe5011d2b8/tumblr_oj49kevkUz1v4bb1no1_500.jpg";
-            $telegram->sendPhoto([ 'chat_id' => $chat_id, 'photo' => $url, 'caption' => "Описание." ]);
-        }elseif ($text == "Гифка") {
-            $url = "https://68.media.tumblr.com/bd08f2aa85a6eb8b7a9f4b07c0807d71/tumblr_ofrc94sG1e1sjmm5ao1_400.gif";
-            $telegram->sendDocument([ 'chat_id' => $chat_id, 'document' => $url, 'caption' => "Описание." ]);
-        }elseif ($text == "Последние статьи") {
-            $html=simplexml_load_file('http://netology.ru/blog/rss.xml');
-            foreach ($html->channel->item as $item) {
-	     $reply .= "\xE2\x9E\xA1 ".$item->title." (<a href='".$item->link."'>читать</a>)\n";
-        	}
-            $telegram->sendMessage([ 'chat_id' => $chat_id, 'parse_mode' => 'HTML', 'disable_web_page_preview' => true, 'text' => $reply ]);
-        }else{
-        	$reply = "По запросу \"<b>".$text."</b>\" ничего не найдено.";
-        	$telegram->sendMessage([ 'chat_id' => $chat_id, 'parse_mode'=> 'HTML', 'text' => $reply ]);
-        }
-    }else{
-    	$telegram->sendMessage([ 'chat_id' => $chat_id, 'text' => "Отправьте текстовое сообщение." ]);
-    }
-?>
+$data = file_get_contents('php://input');
+
+$data = json_decode($data, true);
+
+ 
+
+if (empty($data['message']['chat']['id'])) {
+
+	exit();
+
+}
+
+ 
+
+define('TOKEN', '5333895852:AAH2Ht-Mw1ituSvoKfGPlD4xWkwcF2RrJ-E');
+
+ 
+
+// Функция вызова методов API.
+
+function sendTelegram($method, $response)
+
+{
+
+	$ch = curl_init('https://api.telegram.org/bot' . TOKEN . '/' . $method);  
+
+	curl_setopt($ch, CURLOPT_POST, 1);  
+
+	curl_setopt($ch, CURLOPT_POSTFIELDS, $response);
+
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+	curl_setopt($ch, CURLOPT_HEADER, false);
+
+	$res = curl_exec($ch);
+
+	curl_close($ch);
+
+ 
+
+	return $res;
+
+}
+
+ 
+
+// Прислали фото.
+
+if (!empty($data['message']['photo'])) {
+
+	$photo = array_pop($data['message']['photo']);
+
+	$res = sendTelegram(
+
+		'getFile', 
+
+		array(
+
+			'file_id' => $photo['file_id']
+
+		)
+
+	);
+
+	
+
+	$res = json_decode($res, true);
+
+	if ($res['ok']) {
+
+		$src = 'https://api.telegram.org/file/bot' . TOKEN . '/' . $res['result']['file_path'];
+
+		$dest = __DIR__ . '/' . time() . '-' . basename($src);
+
+ 
+
+		if (copy($src, $dest)) {
+
+			sendTelegram(
+
+				'sendMessage', 
+
+				array(
+
+					'chat_id' => $data['message']['chat']['id'],
+
+					'text' => 'Фото сохранено'
+
+				)
+
+			);
+
+			
+
+		}
+
+	}
+
+	
+
+	exit();	
+
+}
+
+ 
+
+// Прислали файл.
+
+if (!empty($data['message']['document'])) {
+
+	$res = sendTelegram(
+
+		'getFile', 
+
+		array(
+
+			'file_id' => $data['message']['document']['file_id']
+
+		)
+
+	);
+
+	
+
+	$res = json_decode($res, true);
+
+	if ($res['ok']) {
+
+		$src = 'https://api.telegram.org/file/bot' . TOKEN . '/' . $res['result']['file_path'];
+
+		$dest = __DIR__ . '/' . time() . '-' . $data['message']['document']['file_name'];
+
+ 
+
+		if (copy($src, $dest)) {
+
+			sendTelegram(
+
+				'sendMessage', 
+
+				array(
+
+					'chat_id' => $data['message']['chat']['id'],
+
+					'text' => 'Файл сохранён'
+
+				)
+
+			);	
+
+		}
+
+	}
+
+	
+
+	exit();	
+
+}
+
+ 
+
+// Ответ на текстовые сообщения.
+
+if (!empty($data['message']['text'])) {
+
+	$text = $data['message']['text'];
+
+ 
+
+	if (mb_stripos($text, 'привет') !== false) {
+
+		sendTelegram(
+
+			'sendMessage', 
+
+			array(
+
+				'chat_id' => $data['message']['chat']['id'],
+
+				'text' => 'Хай!'
+
+			)
+
+		);
+
+ 
+
+		exit();	
+
+	} 
+
+ 
+
+	// Отправка фото.
+
+	if (mb_stripos($text, 'фото') !== false) {
+
+		sendTelegram(
+
+			'sendPhoto', 
+
+			array(
+
+				'chat_id' => $data['message']['chat']['id'],
+
+				'photo' => curl_file_create(__DIR__ . '/torin.jpg')
+
+			)
+
+		);
+
+		
+
+		exit();	
+
+	}
+
+ 
+
+	// Отправка файла.
+
+	if (mb_stripos($text, 'файл') !== false) {
+
+		sendTelegram(
+
+			'sendDocument', 
+
+			array(
+
+				'chat_id' => $data['message']['chat']['id'],
+
+				'document' => curl_file_create(__DIR__ . '/example.xls')
+
+			)
+
+		);
+
+ 
+
+		exit();	
+
+	}
+
+}
